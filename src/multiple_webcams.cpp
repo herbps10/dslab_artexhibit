@@ -19,8 +19,11 @@ using namespace std;
 
 
 
-int grid_x, grid_y, grid_spacing, grid_m, grid_n;
-int *grid;
+int grid_x, grid_y, grid_spacing, grid_rows, grid_cols;
+
+int webcams_x, webcams_y;
+
+int *grid, *master_grid;
 int music_column = 0;
 
 string sounds[5] = {
@@ -31,27 +34,32 @@ string sounds[5] = {
 	"sounds/Piano.ff.G4.wav"
 };
 
+int array_coordinates(int width, int x, int y)
+{
+    return width * y + x;
+}
+
 /*
  * Draws the grid onto a OpenCV image
  */
 void draw_grid(IplImage *image, int *grid)
 {
-	for(int x = grid_x; x < grid_x + grid_spacing * grid_n; x += grid_spacing)
+	for(int x = grid_x; x < grid_x + grid_spacing * grid_cols; x += grid_spacing)
 	{
-		cvLine(image, Point(x, grid_y), Point(x, grid_y + grid_spacing * grid_m), Scalar(0, 255, 0), 1);
+		cvLine(image, Point(x, grid_y), Point(x, grid_y + grid_spacing * grid_rows), Scalar(0, 255, 0), 1);
 	}
 
-	for(int y = grid_y; y < grid_y + grid_spacing * grid_m; y += grid_spacing)
+	for(int y = grid_y; y < grid_y + grid_spacing * grid_rows; y += grid_spacing)
 	{
-		cvLine(image, Point(grid_x, y), Point(grid_x + grid_spacing * grid_n, y), Scalar(0, 255, 0), 1);
+		cvLine(image, Point(grid_x, y), Point(grid_x + grid_spacing * grid_cols, y), Scalar(0, 255, 0), 1);
 	}
 
 
-	for(int row = 0; row < grid_m; row++)
+	for(int row = 0; row < grid_rows; row++)
 	{
-		for(int col = 0; col < grid_n; col++)
+		for(int col = 0; col < grid_cols; col++)
 		{
-			if(grid[grid_n * row + col] == 1)
+			if(grid[grid_cols * row + col] == 1)
 			{
 				cvRectangle(image, Point(grid_x + col * grid_spacing, grid_y + row * grid_spacing), Point(grid_x + (col + 1) * grid_spacing, grid_y + (row + 1) * grid_spacing), Scalar(0, 0, 255), 2);
 			}
@@ -64,14 +72,30 @@ void draw_grid(IplImage *image, int *grid)
  */
 void print_grid()
 {
-	for(int i = 0; i < grid_m; i++) {
-		for(int j = 0; j < grid_n; j++)
+	for(int i = 0; i < grid_rows; i++) {
+		for(int j = 0; j < grid_cols; j++)
 		{
-			cout << grid[grid_n * i + j] << "\t";
+			cout << grid[grid_cols * i + j] << "\t";
 		}
 
 		cout << endl;
 	}
+}
+
+/*
+ * Prints out the master grid for inspection
+ */
+void print_master_grid()
+{
+    for(int y = 0; y < grid_rows * webcams_y; y++)
+    {
+        for(int x = 0; x < grid_cols * webcams_x; x++)
+        {
+            cout << master_grid[array_coordinates(grid_cols * webcams_x, x, y)] << "\t";
+        }
+
+        cout << endl;
+    }
 }
 
 double time_diff(struct timeval x , struct timeval y)
@@ -89,21 +113,21 @@ double time_diff(struct timeval x , struct timeval y)
 // Scan the grid to look for significant differences between the reference and current
 void update_grid(IplImage *difference, int difference_threshold)
 {
-    for(int row = 0; row < grid_m; row++)
+    for(int row = 0; row < grid_rows; row++)
     {
-	for(int col = 0; col < grid_n; col++ )
-	{
-		Mat roi(difference, Rect(grid_x + col * grid_spacing, grid_y + row * grid_spacing, grid_spacing, grid_spacing));
+        for(int col = 0; col < grid_cols; col++ )
+        {
+            Mat roi(difference, Rect(grid_x + col * grid_spacing, grid_y + row * grid_spacing, grid_spacing, grid_spacing));
 
-		if(sum(roi)[0] > difference_threshold)
-		{
-			grid[grid_n * row + col] = 1;
-		}
-		else
-		{
-			grid[grid_n * row + col] = 0;
-		}
-	}
+            if(sum(roi)[0] > difference_threshold)
+            {
+                grid[grid_cols * row + col] = 1;
+            }
+            else
+            {
+                grid[grid_cols * row + col] = 0;
+            }
+        }
     }
 }
 
@@ -114,11 +138,11 @@ int count_grid_cells_on()
 {
 	int count = 0;
 
-	for(int row = 0; row < grid_m; row++)
+	for(int row = 0; row < grid_rows; row++)
 	{
-		for(int col = 0; col < grid_n; col++)
+		for(int col = 0; col < grid_cols; col++)
 		{
-			count += grid[grid_n * row + col];
+			count += grid[grid_cols * row + col];
 		}
 	}
 
@@ -132,6 +156,7 @@ int capture_frame(CvCapture *capture, IplImage *color_frame, IplImage *gray_fram
 {
     // Capture a frame from the webcam
     color_frame = cvQueryFrame( capture );
+
 
     // Check to make sure the frame was captured correctly
     if( !color_frame )
@@ -170,9 +195,9 @@ void music_task()
 		{
 			cout << "Firing at " <<  time_diff(before, after) << endl;
 
-			for(int row = 0; row < grid_m; row++)
+			for(int row = 0; row < grid_rows * webcams_y; row++)
 			{
-				if(grid[grid_n * row + music_column] == 1)
+				if(grid[grid_cols * row + music_column] == 1)
 				{
 					printf("Playing %i %i\n", row, music_column);
 
@@ -192,9 +217,9 @@ void music_task()
 
 			gettimeofday(&before, NULL);
 
-			music_column = (music_column + 1) % grid_n;
+			music_column = (music_column + 1) % (grid_cols * webcams_x);
 
-			print_grid();
+			//print_grid();
 		}
 
 	}
@@ -216,17 +241,23 @@ int main(int argc, char *argv[]) {
 	//
 	grid_x = 0;
 	grid_y = 0;
-	grid_spacing = 160; 
-	grid_m = 5;
-	grid_n = 8;
+	grid_spacing = 140; 
+	grid_rows = 5;
+	grid_cols = 8;
 
-	grid = (int *)malloc(sizeof(int) * grid_m * grid_n);
+	//
+	// Set up the grid of webcams
+	//
+	webcams_x = 2; // How many webcams across
+	webcams_y = 1; // How many webcams down
 
-	for(int i = 0; i < grid_m; i++)
+	grid = (int *)malloc(sizeof(int) * grid_rows * grid_cols);
+
+	for(int i = 0; i < grid_rows; i++)
 	{
-		for(int j = 0; j < grid_n; j++)
+		for(int j = 0; j < grid_cols; j++)
 		{
-			grid[grid_n * i + j] = 0;
+			grid[grid_cols * i + j] = 0;
 		}
 	}
 
@@ -235,6 +266,20 @@ int main(int argc, char *argv[]) {
 	//
 	if(rank == 0)
 	{
+
+		// Set up master grid
+		master_grid = (int *)malloc(sizeof(int) * grid_rows * webcams_y * grid_cols * webcams_x);
+
+		for(int y = 0; y < grid_rows * webcams_y; y++)
+		{
+			for(int x = 0; x < grid_cols * webcams_x; x++)
+			{
+				master_grid[array_coordinates(grid_cols * webcams_x, x, y)] = 0;
+			}
+		}
+
+		print_master_grid();
+
 		// Recieve a message
 		MPI_Status status;
 
@@ -249,7 +294,24 @@ int main(int argc, char *argv[]) {
 
 		while(true)
 		{
-			MPI_Recv(grid, grid_m * grid_n, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+			MPI_Recv(grid, grid_rows * grid_cols, MPI_INT, MPI_ANY_SOURCE, 0, MPI_COMM_WORLD, &status);
+
+			// Copy the grid into the master grid depending on which slave sent it
+			int sender_x = (status.MPI_SOURCE - 1) % webcams_x;
+			int sender_y = (status.MPI_SOURCE - 1) / webcams_x;
+
+			for(int y = 0; y < grid_rows; y++)
+			{
+				for(int x = 0; x < grid_cols; x++)
+				{
+					master_grid[array_coordinates(webcams_x * grid_cols, sender_x * grid_cols + x, sender_y * grid_rows + y)] = grid[array_coordinates(grid_cols, x, y)];
+				}
+			}
+
+            		//cout << "recieved message from (" << sender_x << "," << sender_y << ")" << endl;
+			system("clear");
+			print_master_grid();
+
 			cvShowImage("drawing", drawing);
 		}
 	}
@@ -264,10 +326,10 @@ int main(int argc, char *argv[]) {
 			 *color_reference = 0, *gray_reference = 0,
 			 *difference = 0;
 
-		int       key = 0;
+		int key = 0;
 
 		// Initialize the webcam
-		capture = cvCaptureFromCAM(1);
+		capture = cvCaptureFromCAM(0);
 		cvSetCaptureProperty(capture, CV_CAP_PROP_FRAME_WIDTH, WIDTH);
 		cvSetCaptureProperty(capture, CV_CAP_PROP_FRAME_HEIGHT, HEIGHT);
 
@@ -277,8 +339,7 @@ int main(int argc, char *argv[]) {
 		    fprintf( stderr, "Cannot open initialize webcam!\n" );
 		    return 1;
 		}
-
-
+        
 		// Create output windows
 		cvNamedWindow("difference",  CV_WINDOW_AUTOSIZE);
 		cvNamedWindow("reference",   CV_WINDOW_AUTOSIZE);
@@ -304,7 +365,6 @@ int main(int argc, char *argv[]) {
 		// CALIBRATE THE DIFFERENCE THRESHOLD
 		//
 
-
 		int difference_threshold = 0;
 		int max_cells_on = 0;
 		do
@@ -315,7 +375,7 @@ int main(int argc, char *argv[]) {
 			cout << "Setting threshold to " << difference_threshold << endl;
 
 			// We want to make sure that this is a reliable threshold with no false positives
-			// so sample the webcam 5 times and make sure it never has gets a positive
+			// so sample the webcam 5 times and make sure it never gets a positive
 			for(int i = 0; i < 5; i++)
 			{
 				capture_frame(capture, color_frame, gray_frame);
@@ -343,7 +403,7 @@ int main(int argc, char *argv[]) {
 		    
 		    // when we're done updating the grid
 		    // send a message to rank 0
-		    MPI_Send(grid, grid_m * grid_n, MPI_INT, 0, 0, MPI_COMM_WORLD);
+		    MPI_Send(grid, grid_rows * grid_cols, MPI_INT, 0, 0, MPI_COMM_WORLD);
 
 		    // Draw the grid on top of each output
 		    draw_grid(gray_frame, grid);
@@ -352,7 +412,7 @@ int main(int argc, char *argv[]) {
 		    // Display the current frame
 		    cvShowImage("color_frame", gray_frame);
 		    cvShowImage("difference",  difference);
-
+		
 		    // Exit if the user presses 'q'
 		    key = cvWaitKey( 1 );
 		}
